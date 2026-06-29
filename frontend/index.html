@@ -1,0 +1,1489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Iron Dome AI — Cameroon Digital Trust Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ─── TOKENS ─── */
+    :root {
+      --gold:        #D4AF37;
+      --gold-dim:    #a8892a;
+      --earth:       #5A3E2B;
+      --green:       #0B3D2E;
+      --green-mid:   #145c45;
+      --sand:        #E6D5B8;
+      --sand-dim:    #c9b99a;
+      --bg:          #080c0a;
+      --surface:     #0f1710;
+      --surface2:    #162019;
+      --surface3:    #1a1f0f;
+      --border:      rgba(212,175,55,0.15);
+      --border-hot:  rgba(212,175,55,0.5);
+      --text:        #e8e2d5;
+      --text-dim:    #8a8278;
+      --danger:      #e05252;
+      --safe:        #4caf7d;
+      --warn:        #e09b52;
+      --mono:        'JetBrains Mono', monospace;
+      --display:     'Space Grotesk', sans-serif;
+      --body:        'Space Grotesk', sans-serif;
+      --radius:      12px;
+      --radius-sm:   8px;
+      /* aliases used by military layout elements */
+      --olive:       #0B3D2E;
+      --olive-mid:   #145c45;
+      --olive-dim:   #0a2e22;
+      --khaki:       #D4AF37;
+      --khaki-dim:   #a8892a;
+      --khaki-pale:  #E6D5B8;
+      --red-alert:   #e05252;
+      --green-go:    #0B3D2E;
+      --green-sig:   #4caf7d;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--body);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+      letter-spacing: 0.01em;
+    }
+
+    /* ─── TACTICAL GRID BACKGROUND ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(75,83,32,0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(75,83,32,0.08) 1px, transparent 1px),
+        linear-gradient(rgba(75,83,32,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(75,83,32,0.04) 1px, transparent 1px);
+      background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* corner scan line effect */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--khaki), transparent);
+      animation: scanline 6s linear infinite;
+      opacity: 0.3;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    @keyframes scanline {
+      0%   { top: 0; }
+      100% { top: 100vh; }
+    }
+
+    /* ─── HEADER ─── */
+    header {
+      position: relative;
+      z-index: 10;
+      border-bottom: 1px solid var(--border);
+      padding: 0 40px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(8,10,6,0.95);
+      backdrop-filter: blur(12px);
+    }
+
+    /* left accent stripe */
+    header::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+      background: linear-gradient(to bottom, var(--khaki), transparent);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .shield-icon { width: 40px; height: 40px; }
+    .shield-icon svg { width: 100%; height: 100%; }
+
+    .logo-text h1 {
+      font-family: var(--display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: var(--khaki);
+      line-height: 1;
+    }
+
+    .logo-text p {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      color: var(--text-dim);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .header-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      color: var(--text-dim);
+      letter-spacing: 0.1em;
+      border: 1px solid var(--border);
+      padding: 5px 12px;
+      border-radius: var(--radius);
+      background: rgba(75,83,32,0.1);
+    }
+
+    .pulse-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--safe);
+      box-shadow: 0 0 0 0 rgba(76,175,80,0.6);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(76,175,80,0.6); }
+      70%  { box-shadow: 0 0 0 8px rgba(76,175,80,0); }
+      100% { box-shadow: 0 0 0 0 rgba(76,175,80,0); }
+    }
+
+    .threat-level {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      color: var(--khaki-dim);
+      letter-spacing: 0.1em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .threat-bars {
+      display: flex;
+      gap: 2px;
+    }
+
+    .threat-bars span {
+      display: block;
+      width: 3px;
+      height: 10px;
+      background: var(--olive);
+      border-radius: 1px;
+    }
+
+    .threat-bars span:nth-child(1),
+    .threat-bars span:nth-child(2) { background: var(--green-sig); }
+    .threat-bars span:nth-child(3) { background: var(--khaki); }
+
+    /* ─── MAIN LAYOUT ─── */
+    main {
+      position: relative;
+      z-index: 5;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* ─── HERO ─── */
+    .hero {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--khaki);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 22px;
+      border: 1px solid var(--border);
+      padding: 6px 16px;
+      border-radius: var(--radius);
+      background: rgba(75,83,32,0.12);
+    }
+
+    .hero h2 {
+      font-family: var(--display);
+      font-size: clamp(1.6rem, 4vw, 2.6rem);
+      font-weight: 700;
+      line-height: 1.15;
+      color: var(--text);
+      margin-bottom: 16px;
+      letter-spacing: 0.06em;
+    }
+
+    .hero h2 span { color: var(--khaki); }
+
+    .hero p {
+      color: var(--text-dim);
+      font-size: 1rem;
+      max-width: 540px;
+      margin: 0 auto;
+      line-height: 1.7;
+      font-weight: 500;
+    }
+
+    /* classified stripe */
+    .classified-stripe {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      letter-spacing: 0.25em;
+      color: var(--text-dim);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 4px 20px;
+      margin-top: 20px;
+    }
+
+    /* ─── TABS ─── */
+    .input-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 14px 8px;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      transition: all 0.15s;
+      border-bottom: 2px solid transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      text-transform: uppercase;
+    }
+
+    .tab-btn:hover { color: var(--text); background: rgba(75,83,32,0.1); }
+
+    .tab-btn.active {
+      color: var(--khaki);
+      border-bottom-color: var(--khaki);
+      background: rgba(75,83,32,0.15);
+    }
+
+    .tab-content { display: none; padding: 28px; }
+    .tab-content.active { display: block; }
+
+    /* ─── INPUTS ─── */
+    label.input-label {
+      display: block;
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    textarea, input[type="text"] {
+      width: 100%;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.88rem;
+      padding: 14px 16px;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+      letter-spacing: 0.04em;
+    }
+
+    textarea:focus, input[type="text"]:focus { border-color: var(--border-hot); }
+    textarea { min-height: 120px; }
+
+    /* ─── IMAGE UPLOAD ─── */
+    .upload-zone {
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--border-hot);
+      background: rgba(75,83,32,0.06);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .upload-icon { font-size: 2rem; margin-bottom: 12px; }
+
+    .upload-zone p {
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+    }
+
+    .upload-zone .file-name {
+      color: var(--khaki);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      margin-top: 8px;
+    }
+
+    .preview-img {
+      max-height: 200px;
+      max-width: 100%;
+      border-radius: var(--radius-sm);
+      margin-top: 16px;
+      display: none;
+      border: 1px solid var(--border);
+    }
+
+    /* ─── ANALYZE BUTTON ─── */
+    .btn-analyze {
+      margin-top: 20px;
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, var(--olive) 0%, var(--olive-mid) 100%);
+      color: var(--khaki-pale);
+      border: 1px solid var(--khaki-dim);
+      border-radius: var(--radius-sm);
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 0.78rem;
+      letter-spacing: 0.15em;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-transform: uppercase;
+    }
+
+    .btn-analyze:hover {
+      background: linear-gradient(135deg, var(--olive-mid) 0%, var(--olive) 100%);
+      box-shadow: 0 0 20px rgba(75,83,32,0.5), 0 0 40px rgba(75,83,32,0.2);
+      transform: translateY(-1px);
+    }
+
+    .btn-analyze:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* ─── LOADING STATE — TEXT SCRAMBLE ─── */
+    #loading-state {
+      display: none;
+      margin-top: 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 48px 24px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #loading-state::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(75,83,32,0.03) 2px,
+        rgba(75,83,32,0.03) 4px
+      );
+      pointer-events: none;
+    }
+
+    .loading-icon {
+      font-size: 2.5rem;
+      margin-bottom: 20px;
+      display: block;
+      animation: iconPulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes iconPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.6; transform: scale(0.96); }
+    }
+
+    .scramble-text {
+      font-family: var(--mono);
+      font-size: 1rem;
+      color: var(--khaki);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      min-height: 24px;
+      display: block;
+    }
+
+    .loading-sub {
+      font-family: var(--mono);
+      color: var(--text-dim);
+      font-size: 0.72rem;
+      margin-top: 10px;
+      letter-spacing: 0.1em;
+    }
+
+    .loading-bar-wrap {
+      width: 240px;
+      height: 2px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 1px;
+      margin: 20px auto 0;
+      overflow: hidden;
+    }
+
+    .loading-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--olive), var(--khaki));
+      border-radius: 1px;
+      animation: loadBar 3s ease-in-out infinite;
+    }
+
+    @keyframes loadBar {
+      0%   { width: 0%;   margin-left: 0; }
+      50%  { width: 80%;  margin-left: 0; }
+      80%  { width: 80%;  margin-left: 20%; }
+      100% { width: 0%;   margin-left: 100%; }
+    }
+
+    /* ─── RESULT PANEL ─── */
+    #result-panel {
+      display: none;
+      margin-top: 32px;
+      animation: fadeUp 0.4s ease;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ─── SCORE CARD ─── */
+    .result-header {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      border-left: 3px solid var(--khaki-dim);
+      padding: 28px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    .score-circle-wrap {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      flex-shrink: 0;
+    }
+
+    .score-circle-wrap canvas { position: absolute; inset: 0; }
+
+    .score-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .score-num {
+      font-family: var(--display);
+      font-size: 1.7rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .score-label {
+      font-family: var(--mono);
+      font-size: 0.55rem;
+      color: var(--text-dim);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    .result-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .verdict-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      border-radius: var(--radius-sm);
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 0.78rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      align-self: flex-start;
+    }
+
+    .verdict-badge.fact        { background: rgba(46,125,50,0.15); color: var(--safe);   border: 1px solid rgba(46,125,50,0.4); }
+    .verdict-badge.misinformation { background: rgba(224,82,82,0.15); color: #FF6040; border: 1px solid rgba(224,82,82,0.3); }
+    .verdict-badge.scam        { background: rgba(224,82,82,0.15); color: #FF6040; border: 1px solid rgba(224,82,82,0.3); }
+    .verdict-badge.phishing    { background: rgba(224,82,82,0.15); color: #FF6040; border: 1px solid rgba(224,82,82,0.3); }
+    .verdict-badge.unknown     { background: rgba(212,130,10,0.15); color: var(--warn); border: 1px solid rgba(212,130,10,0.4); }
+
+    .confidence-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+
+    .confidence-bar {
+      height: 4px;
+      width: 80px;
+      background: rgba(255,255,255,0.07);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .confidence-fill { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+    .confidence-fill.low    { width: 33%; background: var(--warn); }
+    .confidence-fill.medium { width: 66%; background: var(--khaki); }
+    .confidence-fill.high   { width: 100%; background: var(--safe); }
+
+    .result-detail-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .detail-chip {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      padding: 3px 10px;
+      border-radius: var(--radius-sm);
+      letter-spacing: 0.08em;
+      background: rgba(75,83,32,0.08);
+    }
+
+    /* ─── CARDS GRID ─── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+    }
+
+    .card-title {
+      font-family: var(--display);
+      font-size: 0.62rem;
+      color: var(--khaki);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card-title::before {
+      content: '';
+      display: block;
+      width: 3px;
+      height: 14px;
+      background: var(--khaki-dim);
+      border-radius: 1px;
+      flex-shrink: 0;
+    }
+
+    /* ─── INTELLIGENCE REPORT FORMATTING ─── */
+    .intel-body {
+      font-size: 1rem;
+      line-height: 1.8;
+      color: #EAE8DC;
+      font-family: var(--body);
+      font-weight: 500;
+    }
+
+    .intel-body .intel-heading {
+      font-family: var(--display);
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--khaki);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin: 18px 0 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(200,181,96,0.12);
+    }
+
+    .intel-body .intel-heading:first-child { margin-top: 0; }
+
+    .intel-body .intel-para {
+      margin-bottom: 10px;
+      color: #EAE8DC;
+    }
+
+    .intel-body .intel-bullet {
+      display: flex;
+      gap: 10px;
+      margin: 5px 0;
+      padding-left: 4px;
+    }
+
+    .intel-body .intel-bullet::before {
+      content: '▸';
+      color: var(--khaki-dim);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .intel-body .intel-num {
+      display: flex;
+      gap: 10px;
+      margin: 5px 0;
+      padding-left: 4px;
+    }
+
+    .intel-body .intel-num-marker {
+      font-family: var(--mono);
+      color: var(--khaki-dim);
+      font-size: 0.78rem;
+      flex-shrink: 0;
+      min-width: 20px;
+    }
+
+    /* ─── CHART CARD ─── */
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      margin-bottom: 14px;
+    }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ─── SOURCES ─── */
+    .sources-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sources-list li {
+      font-size: 0.8rem;
+      font-family: var(--mono);
+      padding: 9px 14px;
+      background: rgba(75,83,32,0.08);
+      border-radius: var(--radius-sm);
+      border-left: 2px solid var(--khaki-dim);
+      word-break: break-all;
+      letter-spacing: 0.03em;
+    }
+
+    .sources-list li a {
+      color: var(--khaki);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .sources-list li a:hover {
+      color: var(--khaki-pale);
+      text-decoration: underline;
+    }
+
+    .sources-list li.no-source {
+      color: var(--text-dim);
+    }
+
+    /* ─── RECOMMENDATION ─── */
+    .rec-card {
+      background: linear-gradient(135deg, rgba(46,125,50,0.12) 0%, rgba(75,83,32,0.15) 100%);
+      border: 1px solid rgba(76,175,80,0.18);
+    }
+
+    .rec-card .intel-body { color: #EAE8DC; }
+
+    /* ─── OUT OF SCOPE ─── */
+    #oos-panel {
+      display: none;
+      margin-top: 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px;
+      text-align: center;
+    }
+
+    #oos-panel .oos-icon { font-size: 2.5rem; margin-bottom: 16px; }
+    #oos-panel h3 { font-family: var(--display); color: var(--text-dim); font-size: 1rem; margin-bottom: 8px; letter-spacing: 0.1em; }
+    #oos-panel p  { color: var(--text-dim); font-size: 0.88rem; font-family: var(--mono); }
+
+    /* ─── ERROR ─── */
+    #error-panel {
+      display: none;
+      margin-top: 32px;
+      background: rgba(204,34,0,0.07);
+      border: 1px solid rgba(204,34,0,0.25);
+      border-radius: var(--radius);
+      border-left: 3px solid var(--red-alert);
+      padding: 20px 24px;
+    }
+
+    #error-panel p {
+      color: #FF6040;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+    }
+
+    /* ─── FOOTER ─── */
+    footer {
+      position: relative;
+      z-index: 5;
+      text-align: center;
+      padding: 20px 24px;
+      border-top: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      color: var(--text-dim);
+      letter-spacing: 0.12em;
+    }
+
+    footer span { color: var(--khaki-dim); }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 600px) {
+      header { padding: 0 16px; }
+      main { padding: 24px 14px 60px; }
+      .result-header { grid-template-columns: 1fr; }
+      .score-circle-wrap { margin: 0 auto; }
+      .chart-grid { grid-template-columns: 1fr; }
+      .tabs { flex-wrap: wrap; }
+      .tab-btn { font-size: 0.6rem; padding: 10px 6px; }
+      .threat-level { display: none; }
+      .logo-text h1 { font-size: 0.85rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="shield-icon">
+      <svg viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M22 3L6 9v12c0 10.5 7 20.3 16 23 9-2.7 16-12.5 16-23V9L22 3z" fill="rgba(75,83,32,0.5)" stroke="#D4AF37" stroke-width="1.5"/>
+        <path d="M22 3L6 9v12c0 10.5 7 20.3 16 23" stroke="#D4AF37" stroke-width="0.5" opacity="0.4"/>
+        <path d="M15 22l5 5 9-9" stroke="#D4AF37" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <h1>IRON DOME AI</h1>
+      <p>Cameroon Digital Trust Platform</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="threat-level">
+      <span>SYS STATUS</span>
+      <div class="threat-bars">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+    <div class="header-badge">
+      <div class="pulse-dot"></div>
+      CDI NETWORK · OPERATIONAL
+    </div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<main>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-eyebrow">
+      🇨🇲 &nbsp;CAMEROON DIGITAL INTELLIGENCE NETWORK
+    </div>
+    <h2>Detect. Verify. <span>Protect.</span></h2>
+    <p>Analyze text, URLs, YouTube videos, and images for scams, misinformation, phishing, and factual threats within the Cameroonian digital space.</p>
+    <div class="classified-stripe">AUTHORIZED CIVILIAN INTERFACE · IRON DOME AI v2.0 · ACTIVE</div>
+  </div>
+
+  <!-- INPUT PANEL -->
+  <div class="input-panel">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('text', this)">✍ Text / Message</button>
+      <button class="tab-btn" onclick="switchTab('url', this)">⬡ Website URL</button>
+      <button class="tab-btn" onclick="switchTab('youtube', this)">▶ YouTube Link</button>
+      <button class="tab-btn" onclick="switchTab('image', this)">◉ Image</button>
+    </div>
+
+    <!-- TEXT -->
+    <div class="tab-content active" id="tab-text">
+      <label class="input-label">// MESSAGE · CLAIM · NEWS TEXT</label>
+      <textarea id="input-text" placeholder="Paste a WhatsApp message, news headline, suspicious claim, or any text content you want to verify..."></textarea>
+      <button class="btn-analyze" onclick="analyze('text')">⬡ INITIATE ANALYSIS</button>
+    </div>
+
+    <!-- URL -->
+    <div class="tab-content" id="tab-url">
+      <label class="input-label">// WEBSITE OR ARTICLE URL</label>
+      <input type="text" id="input-url" placeholder="https://example.com/article-to-verify" />
+      <button class="btn-analyze" onclick="analyze('url')">⬡ SCAN WEBSITE</button>
+    </div>
+
+    <!-- YOUTUBE -->
+    <div class="tab-content" id="tab-youtube">
+      <label class="input-label">// YOUTUBE VIDEO LINK</label>
+      <input type="text" id="input-youtube" placeholder="https://www.youtube.com/watch?v=..." />
+      <p style="font-family:var(--mono);font-size:0.68rem; color:var(--text-dim); margin-top:10px; letter-spacing:0.06em;">⚡ IRON DOME EXTRACTS FULL TRANSCRIPT BEFORE ANALYSIS. VIDEO MUST HAVE CAPTIONS ENABLED.</p>
+      <button class="btn-analyze" onclick="analyze('youtube')">⬡ SCAN VIDEO</button>
+    </div>
+
+    <!-- IMAGE -->
+    <div class="tab-content" id="tab-image">
+      <label class="input-label">// UPLOAD IMAGE FOR ANALYSIS</label>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="input-image" accept="image/*" onchange="handleFileSelect(this)" />
+        <div class="upload-icon">◉</div>
+        <p>DROP AN IMAGE HERE OR CLICK TO UPLOAD</p>
+        <p style="font-size:0.68rem; margin-top:6px;">SUPPORTS JPG · PNG · WEBP · GIF</p>
+        <div class="file-name" id="file-name-display"></div>
+      </div>
+      <img id="preview-img" class="preview-img" alt="Preview" />
+      <button class="btn-analyze" onclick="analyze('image')">⬡ ANALYZE IMAGE</button>
+    </div>
+  </div>
+
+  <!-- LOADING STATE -->
+  <div id="loading-state">
+    <span class="loading-icon">🛡️</span>
+    <span class="scramble-text" id="scramble-text">INITIALIZING...</span>
+    <div class="loading-sub" id="loading-sub">Connecting to Cameroon Digital Intelligence network</div>
+    <div class="loading-bar-wrap"><div class="loading-bar"></div></div>
+  </div>
+
+  <!-- ERROR -->
+  <div id="error-panel">
+    <p id="error-msg"></p>
+  </div>
+
+  <!-- OUT OF SCOPE -->
+  <div id="oos-panel">
+    <div class="oos-icon">🌍</div>
+    <h3>Out of Scope</h3>
+    <p id="oos-msg"></p>
+  </div>
+
+  <!-- RESULT PANEL -->
+  <div id="result-panel">
+
+    <div class="result-header">
+      <div class="score-circle-wrap">
+        <canvas id="scoreChart" width="120" height="120"></canvas>
+        <div class="score-center">
+          <div class="score-num" id="score-num">—</div>
+          <div class="score-label">RISK SCORE</div>
+        </div>
+      </div>
+      <div class="result-meta">
+        <div class="verdict-badge" id="verdict-badge">—</div>
+        <div class="confidence-row">
+          <span>CONFIDENCE:</span>
+          <div class="confidence-bar"><div class="confidence-fill" id="conf-fill"></div></div>
+          <span id="conf-label">—</span>
+        </div>
+        <div class="result-detail-row" id="detail-chips"></div>
+      </div>
+    </div>
+
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-title">Intelligence Summary</div>
+        <div class="intel-body" id="result-summary"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Analytical Breakdown</div>
+        <div class="intel-body" id="result-reasoning"></div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="card-title" style="margin-bottom:20px;">Risk Breakdown</div>
+      <div class="chart-grid">
+        <div>
+          <div style="font-family:var(--mono);font-size:0.62rem; color:var(--text-dim); margin-bottom:10px; letter-spacing:0.1em;">SCORE DISTRIBUTION</div>
+          <div class="chart-wrap"><canvas id="pieChart"></canvas></div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:0.62rem; color:var(--text-dim); margin-bottom:10px; letter-spacing:0.1em;">CREDIBILITY INDICATORS</div>
+          <div class="chart-wrap"><canvas id="barChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cards-grid">
+      <div class="card rec-card">
+        <div class="card-title">Field Recommendation</div>
+        <div class="intel-body" id="result-rec"></div>
+      </div>
+      <div class="card" id="sources-card">
+        <div class="card-title">Sources & References</div>
+        <ul class="sources-list" id="sources-list"></ul>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<footer>
+  IRON DOME AI &nbsp;·&nbsp; CAMEROON DIGITAL TRUST PLATFORM &nbsp;·&nbsp;
+  <span>POWERED BY CAMEROON DIGITAL INTELLIGENCE</span>
+  &nbsp;·&nbsp; ALL ANALYSIS WITHIN CAMEROONIAN DIGITAL JURISDICTION
+</footer>
+
+<script>
+const API_BASE = 'http://127.0.0.1:8000';
+
+let scoreChartInst = null;
+let pieChartInst   = null;
+let barChartInst   = null;
+
+/* ─── TEXT SCRAMBLE ENGINE ─── */
+class TextScramble {
+  constructor(el) {
+    this.el = el;
+    this.chars = '!@#$%^&*()_+-=[]{}|;:,./<>?0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    this.frame = 0;
+    this.queue = [];
+    this.frameRequest = null;
+    this.update = this.update.bind(this);
+  }
+
+  setText(newText) {
+    const old = this.el.innerText;
+    const length = Math.max(old.length, newText.length);
+    return new Promise(resolve => {
+      this.queue = [];
+      for (let i = 0; i < length; i++) {
+        const from = old[i] || '';
+        const to   = newText[i] || '';
+        const start = Math.floor(Math.random() * 12);
+        const end   = start + Math.floor(Math.random() * 16) + 8;
+        this.queue.push({ from, to, start, end });
+      }
+      cancelAnimationFrame(this.frameRequest);
+      this.frame = 0;
+      this.resolve = resolve;
+      this.update();
+    });
+  }
+
+  update() {
+    let output = '';
+    let complete = 0;
+    for (let i = 0, n = this.queue.length; i < n; i++) {
+      const { from, to, start, end } = this.queue[i];
+      if (this.frame >= end) {
+        complete++;
+        output += to;
+      } else if (this.frame >= start) {
+        output += `<span style="color:var(--olive-mid)">${this.randomChar()}</span>`;
+      } else {
+        output += from;
+      }
+    }
+    this.el.innerHTML = output;
+    if (complete === this.queue.length) {
+      this.resolve && this.resolve();
+    } else {
+      this.frameRequest = requestAnimationFrame(this.update);
+      this.frame++;
+    }
+  }
+
+  randomChar() {
+    return this.chars[Math.floor(Math.random() * this.chars.length)];
+  }
+}
+
+let scrambler = null;
+
+const LOADING_MESSAGES = [
+  'SCANNING CAMEROON DIGITAL LANDSCAPE...',
+  'VERIFYING ACROSS TRUSTED CDI SOURCES...',
+  'CROSS-REFERENCING NATIONAL MEDIA REGISTRY...',
+  'ANALYZING DIGITAL THREAT SIGNATURES...',
+  'INTERROGATING OPEN SOURCE INTELLIGENCE...',
+  'AUTHENTICATING AGAINST KNOWN DISINFORMATION PATTERNS...',
+  'SCRAPING TRUSTED WEB SOURCES...',
+  'COMPILING INTELLIGENCE REPORT...',
+];
+
+let scrambleInterval = null;
+
+function startScramble(initialMsg) {
+  const el = document.getElementById('scramble-text');
+  if (!scrambler) scrambler = new TextScramble(el);
+  let idx = 0;
+  const msgs = initialMsg
+    ? [initialMsg, ...LOADING_MESSAGES]
+    : LOADING_MESSAGES;
+
+  const cycle = () => { scrambler.setText(msgs[idx % msgs.length]).then(() => { idx++; }); };
+  cycle();
+  scrambleInterval = setInterval(cycle, 2800);
+}
+
+function stopScramble() {
+  clearInterval(scrambleInterval);
+  scrambleInterval = null;
+}
+
+/* ─── INTELLIGENCE TEXT FORMATTER ─── */
+function formatIntelText(raw) {
+  if (!raw) return '<span style="color:var(--text-dim)">—</span>';
+
+  const lines = raw.split('\n');
+  let html = '';
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) { html += '<div style="margin:4px 0;"></div>'; return; }
+
+    // Numbered list: "1. text" or "1) text"
+    const numMatch = trimmed.match(/^(\d+)[.)]\s+(.+)/);
+    if (numMatch) {
+      html += `<div class="intel-num"><span class="intel-num-marker">${numMatch[1]}.</span><span>${numMatch[2]}</span></div>`;
+      return;
+    }
+
+    // Bullet: "- text" or "• text" or "* text"
+    const bulletMatch = trimmed.match(/^[-•*]\s+(.+)/);
+    if (bulletMatch) {
+      html += `<div class="intel-bullet"><span>${bulletMatch[1]}</span></div>`;
+      return;
+    }
+
+    // Heading: ALL CAPS line or ends with ":"
+    if (trimmed === trimmed.toUpperCase() && trimmed.length > 3 && /[A-Z]/.test(trimmed)) {
+      html += `<div class="intel-heading">${trimmed}</div>`;
+      return;
+    }
+
+    // Heading heuristic: short line ending with colon
+    if (trimmed.endsWith(':') && trimmed.length < 60) {
+      html += `<div class="intel-heading">${trimmed.slice(0, -1)}</div>`;
+      return;
+    }
+
+    // Bold key phrases like **text** or *text*
+    const formatted = trimmed
+      .replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--khaki-pale)">$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em style="color:var(--khaki-dim)">$1</em>');
+
+    html += `<div class="intel-para">${formatted}</div>`;
+  });
+
+  return html;
+}
+
+/* ─── CHARTS ─── */
+function initScoreChart(score, color) {
+  const ctx = document.getElementById('scoreChart').getContext('2d');
+  if (scoreChartInst) scoreChartInst.destroy();
+  scoreChartInst = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [score, 100 - score],
+        backgroundColor: [color, 'rgba(255,255,255,0.04)'],
+        borderWidth: 0,
+        circumference: 270,
+        rotation: 225,
+      }]
+    },
+    options: {
+      cutout: '75%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      animation: { duration: 1000 }
+    }
+  });
+}
+
+function initPieChart(score, label) {
+  const ctx = document.getElementById('pieChart').getContext('2d');
+  if (pieChartInst) pieChartInst.destroy();
+
+  let data, labels, colors;
+  if (label === 'FACT') {
+    data = [score > 0 ? 100 - score : 85, score > 0 ? score : 15, 0];
+    labels = ['Factual', 'Uncertain', 'Risk'];
+    colors = ['#4caf7d', '#D4AF37', '#e05252'];
+  } else if (label === 'UNKNOWN') {
+    data = [30, 50, 20];
+    labels = ['Likely OK', 'Uncertain', 'Risk'];
+    colors = ['#4caf7d', '#D4AF37', '#e05252'];
+  } else {
+    const risk = score;
+    const uncertain = Math.min(100 - risk, 20);
+    const factual = Math.max(0, 100 - risk - uncertain);
+    data = [factual, uncertain, risk];
+    labels = ['Credible', 'Uncertain', 'Risk'];
+    colors = ['#4caf7d', '#D4AF37', '#e05252'];
+  }
+
+  pieChartInst = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{ data, backgroundColor: colors, borderWidth: 0 }]
+    },
+    options: {
+      cutout: '60%',
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: { color: '#7A7860', font: { size: 10, family: 'JetBrains Mono' }, padding: 10 }
+        }
+      },
+      animation: { duration: 900 }
+    }
+  });
+}
+
+function initBarChart(score, confidence) {
+  const ctx = document.getElementById('barChart').getContext('2d');
+  if (barChartInst) barChartInst.destroy();
+
+  const confVal    = confidence === 'High' ? 90 : confidence === 'Medium' ? 60 : 30;
+  const credibility = Math.max(0, 100 - score);
+  const risk        = score;
+
+  barChartInst = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Credibility', 'Risk Level', 'CDI Confidence'],
+      datasets: [{
+        data: [credibility, risk, confVal],
+        backgroundColor: ['#4caf7d', '#e05252', '#D4AF37'],
+        borderRadius: 2,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      scales: {
+        x: { max: 100, grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#7A7860', font: { size: 10 } } },
+        y: { grid: { display: false }, ticks: { color: '#7A7860', font: { size: 10, family: 'JetBrains Mono' } } }
+      },
+      plugins: { legend: { display: false } },
+      animation: { duration: 900 }
+    }
+  });
+}
+
+/* ─── TAB SWITCH ─── */
+function switchTab(tab, btn) {
+  document.getElementById('input-text').value = '';
+  document.getElementById('input-url').value = '';
+  document.getElementById('input-youtube').value = '';
+  document.getElementById('input-image').value = '';
+  document.getElementById('file-name-display').textContent = '';
+  document.getElementById('preview-img').style.display = 'none';
+  hideAll();
+
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+}
+
+/* ─── FILE SELECT ─── */
+function handleFileSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('file-name-display').textContent = '📎 ' + file.name;
+  const preview = document.getElementById('preview-img');
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = 'block';
+}
+
+const uploadZone = document.getElementById('upload-zone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const dt = e.dataTransfer;
+  if (dt.files[0]) {
+    document.getElementById('input-image').files = dt.files;
+    handleFileSelect(document.getElementById('input-image'));
+  }
+});
+
+/* ─── HELPERS ─── */
+function hideAll() {
+  stopScramble();
+  document.getElementById('loading-state').style.display = 'none';
+  document.getElementById('result-panel').style.display = 'none';
+  document.getElementById('oos-panel').style.display = 'none';
+  document.getElementById('error-panel').style.display = 'none';
+}
+
+function showLoading(sub) {
+  hideAll();
+  document.getElementById('loading-state').style.display = 'block';
+  document.getElementById('loading-sub').textContent = sub || 'Connecting to Cameroon Digital Intelligence network';
+  startScramble();
+}
+
+function setAllBtnsDisabled(v) {
+  document.querySelectorAll('.btn-analyze').forEach(b => b.disabled = v);
+}
+
+function getScoreColor(score) {
+  if (score <= 30) return '#4caf7d';
+  if (score <= 60) return '#D4AF37';
+  if (score <= 80) return '#E09B52';
+  return '#e05252';
+}
+
+/* ─── RENDER RESULT ─── */
+function renderResult(data) {
+  hideAll();
+
+  if (data.scope_check === 'OUT_OF_SCOPE') {
+    document.getElementById('oos-msg').textContent = data.out_of_scope_message || 'This content is outside the Cameroon digital trust scope.';
+    document.getElementById('oos-panel').style.display = 'block';
+    return;
+  }
+
+  const score      = data.score ?? 50;
+  const label      = (data.label || 'UNKNOWN').toUpperCase();
+  const confidence = data.confidence || 'Low';
+  const color      = getScoreColor(score);
+
+  document.getElementById('score-num').textContent = score;
+  document.getElementById('score-num').style.color = color;
+  initScoreChart(score, color);
+
+  const badge = document.getElementById('verdict-badge');
+  const labelClass = label.toLowerCase().replace(/\s+/g, '-').replace('/', '-');
+  badge.className = 'verdict-badge ' + labelClass;
+  const icons = { FACT: '✅', MISINFORMATION: '❌', SCAM: '🚨', PHISHING: '⚠️', UNKNOWN: '❓' };
+  badge.textContent = (icons[label] || '🔍') + ' ' + label;
+
+  const confFill = document.getElementById('conf-fill');
+  confFill.className = 'confidence-fill ' + confidence.toLowerCase();
+  document.getElementById('conf-label').textContent = confidence;
+
+  const chips = document.getElementById('detail-chips');
+  chips.innerHTML = '';
+  [
+    data.content_type_analyzed && `TYPE: ${data.content_type_analyzed.toUpperCase()}`,
+    data.language_detected && `LANG: ${data.language_detected.toUpperCase()}`,
+  ].filter(Boolean).forEach(c => {
+    const span = document.createElement('span');
+    span.className = 'detail-chip';
+    span.textContent = c;
+    chips.appendChild(span);
+  });
+
+  // Formatted intel text
+  document.getElementById('result-summary').innerHTML  = formatIntelText(data.summary || '—');
+  document.getElementById('result-reasoning').innerHTML = formatIntelText(data.reasoning || '—');
+  document.getElementById('result-rec').innerHTML       = formatIntelText(data.recommendation || '—');
+
+  // Clickable sources
+  const sourcesList = document.getElementById('sources-list');
+  sourcesList.innerHTML = '';
+  const sources = data.sources || [];
+  if (sources.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'no-source';
+    li.textContent = 'No reliable external sources identified.';
+    sourcesList.appendChild(li);
+  } else {
+    sources.forEach(s => {
+      const li = document.createElement('li');
+      const isUrl = /^https?:\/\//i.test(s);
+      if (isUrl) {
+        const a = document.createElement('a');
+        a.href = s;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = s;
+        li.appendChild(a);
+      } else {
+        li.textContent = s;
+      }
+      sourcesList.appendChild(li);
+    });
+  }
+
+  initPieChart(score, label);
+  initBarChart(score, confidence);
+
+  document.getElementById('result-panel').style.display = 'block';
+  document.getElementById('result-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ─── ANALYZE ─── */
+async function analyze(type) {
+  hideAll();
+  setAllBtnsDisabled(true);
+
+  try {
+    let result;
+
+    if (type === 'text') {
+      const content = document.getElementById('input-text').value.trim();
+      if (!content) { showError('Please enter some text to analyze.'); return; }
+      showLoading('Scanning text content across Cameroon digital intelligence sources...');
+      result = await fetchJSON('/analyze/text', { content, input_type: 'text' });
+
+    } else if (type === 'url') {
+      const content = document.getElementById('input-url').value.trim();
+      if (!content) { showError('Please enter a URL to analyze.'); return; }
+      showLoading('Scraping and verifying web content against trusted sources...');
+      result = await fetchJSON('/analyze/url', { url: content });
+
+    } else if (type === 'youtube') {
+      const content = document.getElementById('input-youtube').value.trim();
+      if (!content) { showError('Please enter a YouTube URL.'); return; }
+      showLoading('Extracting video transcript and scanning Cameroon digital intelligence...');
+      result = await fetchJSON('/analyze/url', { url: content });
+
+    } else if (type === 'image') {
+      const fileInput = document.getElementById('input-image');
+      if (!fileInput.files[0]) { showError('Please select an image to analyze.'); return; }
+      showLoading('Analyzing image via Cameroon Digital Intelligence vision layer...');
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      const resp = await fetch(API_BASE + '/analyze/image', { method: 'POST', body: formData });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || 'Image analysis failed.');
+      }
+      result = await resp.json();
+    }
+
+    renderResult(result);
+
+  } catch (err) {
+    showError(err.message || 'An unexpected error occurred. Please check the backend is running.');
+  } finally {
+    setAllBtnsDisabled(false);
+  }
+}
+
+async function fetchJSON(path, body) {
+  const resp = await fetch(API_BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || `Server error: ${resp.status}`);
+  }
+  return resp.json();
+}
+
+function showError(msg) {
+  hideAll();
+  document.getElementById('error-msg').textContent = '⚠ ' + msg;
+  document.getElementById('error-panel').style.display = 'block';
+}
+</script>
+</body>
+</html>

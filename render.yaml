@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: iron-dome-ai-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
