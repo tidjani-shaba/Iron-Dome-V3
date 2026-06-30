@@ -822,6 +822,45 @@
       letter-spacing: 0.04em;
     }
 
+    /* ─── BUSY / TRAFFIC NOTICE (calm, non-alarming) ─── */
+    #busy-panel {
+      display: none;
+      margin-top: 32px;
+      background: rgba(212,175,55,0.06);
+      border: 1px solid rgba(212,175,55,0.25);
+      border-radius: var(--radius);
+      border-left: 3px solid var(--khaki-dim);
+      padding: 24px 28px;
+      text-align: center;
+    }
+
+    #busy-panel .busy-icon {
+      font-size: 1.8rem;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    #busy-panel h3 {
+      font-family: var(--display);
+      font-size: 0.9rem;
+      color: var(--khaki);
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+
+    #busy-panel p {
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      letter-spacing: 0.03em;
+      line-height: 1.6;
+    }
+
+    #busy-panel .btn-analyze {
+      max-width: 220px;
+      margin: 18px auto 0;
+    }
+
     /* ─── FOOTER ─── */
     footer {
       position: relative;
@@ -954,6 +993,13 @@
     <p id="error-msg"></p>
   </div>
 
+  <!-- BUSY / TRAFFIC NOTICE -->
+  <div id="busy-panel">
+    <span class="busy-icon">🛰️</span>
+    <h3>Network Currently Busy</h3>
+    <p id="busy-msg">Cameroon Digital Intelligence is handling a high volume of verification requests right now. Please wait a few seconds and try again.</p>
+  </div>
+
   <!-- OUT OF SCOPE -->
   <div id="oos-panel">
     <div class="oos-icon">🌍</div>
@@ -1030,7 +1076,11 @@
 </footer>
 
 <script>
-const API_BASE = 'https://iron-dome-v3.onrender.com';
+// LOCAL (for testing)
+const API_BASE = 'http://127.0.0.1:8000';
+
+// PRODUCTION (for demo/live use) — uncomment when ready to push
+// const API_BASE = 'https://iron-dome-ai.onrender.com';
 
 let scoreChartInst = null;
 let pieChartInst   = null;
@@ -1317,6 +1367,7 @@ function hideAll() {
   document.getElementById('result-panel').style.display = 'none';
   document.getElementById('oos-panel').style.display = 'none';
   document.getElementById('error-panel').style.display = 'none';
+  document.getElementById('busy-panel').style.display = 'none';
 }
 
 function showLoading(sub) {
@@ -1449,10 +1500,23 @@ async function analyze(type) {
       showLoading('Analyzing image via Cameroon Digital Intelligence vision layer...');
       const formData = new FormData();
       formData.append('file', fileInput.files[0]);
-      const resp = await fetch(API_BASE + '/analyze/image', { method: 'POST', body: formData });
+
+      let resp;
+      try {
+        resp = await Promise.race([
+          fetch(API_BASE + '/analyze/image', { method: 'POST', body: formData }),
+          timeoutPromise(60000)
+        ]);
+      } catch (e) {
+        if (e.message === 'TIMEOUT') throw new Error('The request took too long to respond. Please try again.');
+        throw e;
+      }
+
       if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.detail || 'Image analysis failed.');
+        const err = await resp.json().catch(() => ({}));
+        const apiError = new Error(err.detail || 'Image analysis failed.');
+        apiError.status = resp.status;
+        throw apiError;
       }
       result = await resp.json();
     }
@@ -1460,21 +1524,45 @@ async function analyze(type) {
     renderResult(result);
 
   } catch (err) {
-    showError(err.message || 'An unexpected error occurred. Please check the backend is running.');
+    if (err.status === 429 || err.status === 503) {
+      showBusy(err.message);
+    } else {
+      showError(err.message || 'An unexpected error occurred. Please check the backend is running.');
+    }
   } finally {
     setAllBtnsDisabled(false);
   }
 }
 
-async function fetchJSON(path, body) {
-  const resp = await fetch(API_BASE + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+function timeoutPromise(ms) {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('TIMEOUT')), ms);
   });
+}
+
+async function fetchJSON(path, body) {
+  let resp;
+  try {
+    resp = await Promise.race([
+      fetch(API_BASE + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      }),
+      timeoutPromise(60000)
+    ]);
+  } catch (err) {
+    if (err.message === 'TIMEOUT') {
+      throw new Error('The request took too long to respond. Please try again.');
+    }
+    throw err;
+  }
+
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
-    throw new Error(err.detail || `Server error: ${resp.status}`);
+    const apiError = new Error(err.detail || `Server error: ${resp.status}`);
+    apiError.status = resp.status;
+    throw apiError;
   }
   return resp.json();
 }
@@ -1483,6 +1571,12 @@ function showError(msg) {
   hideAll();
   document.getElementById('error-msg').textContent = '⚠ ' + msg;
   document.getElementById('error-panel').style.display = 'block';
+}
+
+function showBusy(msg) {
+  hideAll();
+  if (msg) document.getElementById('busy-msg').textContent = msg;
+  document.getElementById('busy-panel').style.display = 'block';
 }
 </script>
 </body>
