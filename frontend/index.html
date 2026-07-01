@@ -470,8 +470,14 @@
       color: var(--khaki);
       letter-spacing: 0.14em;
       text-transform: uppercase;
-      min-height: 24px;
+      /* Fixed dimensions prevent layout reflow when characters change during scramble */
       display: block;
+      height: 28px;
+      line-height: 28px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      max-width: 100%;
     }
 
     .loading-sub {
@@ -480,6 +486,12 @@
       font-size: 0.72rem;
       margin-top: 10px;
       letter-spacing: 0.1em;
+      /* Fixed height prevents sub-text from causing layout shift */
+      height: 20px;
+      line-height: 20px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
     }
 
     .loading-bar-wrap {
@@ -504,6 +516,40 @@
       50%  { width: 80%;  margin-left: 0; }
       80%  { width: 80%;  margin-left: 20%; }
       100% { width: 0%;   margin-left: 100%; }
+    }
+
+    /* ─── COPY REPORT BUTTON ─── */
+    .copy-bar {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 10px;
+    }
+
+    .btn-copy {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(212,175,55,0.08);
+      border: 1px solid var(--border-hot);
+      color: var(--khaki);
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      padding: 9px 16px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-copy:hover {
+      background: rgba(212,175,55,0.16);
+      border-color: var(--khaki);
+    }
+
+    .btn-copy.copied {
+      background: rgba(76,175,80,0.12);
+      border-color: rgba(76,175,80,0.5);
+      color: var(--safe);
     }
 
     /* ─── RESULT PANEL ─── */
@@ -877,16 +923,89 @@
     footer span { color: var(--khaki-dim); }
 
     /* ─── RESPONSIVE ─── */
+    /* ─── RESPONSIVE ─── */
+
+    @media (max-width: 768px) {
+      main { max-width: 100%; }
+      .cards-grid { grid-template-columns: 1fr; }
+      .chart-grid { grid-template-columns: 1fr; gap: 28px; }
+    }
+
     @media (max-width: 600px) {
-      header { padding: 0 16px; }
-      main { padding: 24px 14px 60px; }
-      .result-header { grid-template-columns: 1fr; }
-      .score-circle-wrap { margin: 0 auto; }
-      .chart-grid { grid-template-columns: 1fr; }
-      .tabs { flex-wrap: wrap; }
-      .tab-btn { font-size: 0.6rem; padding: 10px 6px; }
+      header { padding: 0 16px; height: 58px; }
+      .logo { gap: 10px; }
+      .shield-icon { width: 32px; height: 32px; }
+      .logo-text h1 { font-size: 0.78rem; letter-spacing: 0.08em; }
+      .logo-text p { font-size: 0.5rem; }
       .threat-level { display: none; }
-      .logo-text h1 { font-size: 0.85rem; }
+      .header-badge { font-size: 0.55rem; padding: 4px 8px; }
+
+      main { padding: 20px 14px 60px; }
+
+      .hero { margin-bottom: 32px; }
+      .hero-eyebrow { font-size: 0.56rem; padding: 5px 12px; }
+      .hero h2 { font-size: 1.5rem; }
+      .hero p { font-size: 0.9rem; padding: 0 4px; }
+
+      .tabs { flex-wrap: wrap; }
+      .tab-btn { flex: 1 1 50%; font-size: 0.62rem; padding: 12px 6px; }
+      .tab-content { padding: 18px 16px; }
+      textarea { min-height: 100px; font-size: 0.82rem; }
+      input[type="text"] { font-size: 0.82rem; padding: 12px 14px; }
+      .btn-analyze { font-size: 0.7rem; padding: 14px; }
+
+      /* ── Scramble animation: smaller text + truly fixed box = zero layout shift ── */
+      #loading-state { padding: 32px 16px; }
+      .loading-icon { font-size: 1.8rem; margin-bottom: 14px; }
+      .scramble-text {
+        font-size: 0.72rem;
+        height: 22px;
+        line-height: 22px;
+        letter-spacing: 0.08em;
+      }
+      .loading-sub {
+        font-size: 0.62rem;
+        height: 18px;
+        line-height: 18px;
+        margin-top: 8px;
+      }
+      .loading-bar-wrap { width: 80%; max-width: 240px; }
+
+      .result-header { grid-template-columns: 1fr; padding: 20px; text-align: center; gap: 18px; }
+      .score-circle-wrap { margin: 0 auto; width: 100px; height: 100px; }
+      .score-num { font-size: 1.4rem; }
+      .result-meta { align-items: center; }
+      .verdict-badge { align-self: center; font-size: 0.68rem; padding: 7px 14px; }
+      .confidence-row { justify-content: center; flex-wrap: wrap; }
+      .result-detail-row { justify-content: center; }
+
+      .cards-grid { grid-template-columns: 1fr; gap: 12px; }
+      .card { padding: 16px; }
+      .card-title { font-size: 0.58rem; }
+      .intel-body { font-size: 0.86rem; }
+
+      .chart-card { padding: 16px; }
+      .chart-grid { grid-template-columns: 1fr; gap: 24px; }
+      .chart-wrap { height: 160px; }
+
+      .sources-list li { font-size: 0.72rem; padding: 8px 10px; }
+
+      footer { font-size: 0.54rem; padding: 16px 14px; line-height: 1.8; }
+    }
+
+    @media (max-width: 380px) {
+      .logo-text p { display: none; }
+      .hero h2 { font-size: 1.3rem; }
+      .tab-btn { font-size: 0.56rem; padding: 10px 4px; }
+      .score-circle-wrap { width: 88px; height: 88px; }
+      .score-num { font-size: 1.2rem; }
+      .scramble-text { font-size: 0.65rem; letter-spacing: 0.05em; }
+    }
+
+    @media (hover: none) and (pointer: coarse) {
+      .btn-analyze { min-height: 48px; }
+      .tab-btn { min-height: 44px; }
+      .upload-zone { min-height: 140px; }
     }
   </style>
 </head>
@@ -946,7 +1065,7 @@
     <!-- TEXT -->
     <div class="tab-content active" id="tab-text">
       <label class="input-label">// MESSAGE · CLAIM · NEWS TEXT</label>
-      <textarea id="input-text" placeholder="Paste a WhatsApp message, news headline, suspicious claim, or any text content you want to verify..."></textarea>
+      <textarea id="input-text" placeholder="Paste a WhatsApp message, news headline, suspicious claim, any text to verify — or paste a Report ID (IDA-XXXXXX) to confirm instantly..."></textarea>
       <button class="btn-analyze" onclick="analyze('text')">⬡ INITIATE ANALYSIS</button>
     </div>
 
@@ -1009,6 +1128,12 @@
 
   <!-- RESULT PANEL -->
   <div id="result-panel">
+
+    <div class="copy-bar">
+      <button class="btn-copy" id="copy-report-btn" onclick="copyReport()">
+        <span id="copy-icon">⧉</span> <span id="copy-label">COPY CERTIFIED REPORT</span>
+      </button>
+    </div>
 
     <div class="result-header">
       <div class="score-circle-wrap">
@@ -1085,6 +1210,9 @@ const API_BASE = 'https://iron-dome-v3.onrender.com';
 let scoreChartInst = null;
 let pieChartInst   = null;
 let barChartInst   = null;
+let lastResult     = null;
+let lastInputType  = null;
+let lastInputSnippet = '';
 
 /* ─── TEXT SCRAMBLE ENGINE ─── */
 class TextScramble {
@@ -1391,6 +1519,7 @@ function getScoreColor(score) {
 /* ─── RENDER RESULT ─── */
 function renderResult(data) {
   hideAll();
+  lastResult = data;
 
   if (data.scope_check === 'OUT_OF_SCOPE') {
     document.getElementById('oos-msg').textContent = data.out_of_scope_message || 'This content is outside the Cameroon digital trust scope.';
@@ -1480,24 +1609,32 @@ async function analyze(type) {
       const content = document.getElementById('input-text').value.trim();
       if (!content) { showError('Please enter some text to analyze.'); return; }
       showLoading('Scanning text content across Cameroon digital intelligence sources...');
+      lastInputType = 'Text / Message';
+      lastInputSnippet = content.length > 160 ? content.slice(0, 160) + '…' : content;
       result = await fetchJSON('/analyze/text', { content, input_type: 'text' });
 
     } else if (type === 'url') {
       const content = document.getElementById('input-url').value.trim();
       if (!content) { showError('Please enter a URL to analyze.'); return; }
       showLoading('Scraping and verifying web content against trusted sources...');
+      lastInputType = 'Website URL';
+      lastInputSnippet = content;
       result = await fetchJSON('/analyze/url', { url: content });
 
     } else if (type === 'youtube') {
       const content = document.getElementById('input-youtube').value.trim();
       if (!content) { showError('Please enter a YouTube URL.'); return; }
       showLoading('Extracting video transcript and scanning Cameroon digital intelligence...');
+      lastInputType = 'YouTube Video';
+      lastInputSnippet = content;
       result = await fetchJSON('/analyze/url', { url: content });
 
     } else if (type === 'image') {
       const fileInput = document.getElementById('input-image');
       if (!fileInput.files[0]) { showError('Please select an image to analyze.'); return; }
       showLoading('Analyzing image via Cameroon Digital Intelligence vision layer...');
+      lastInputType = 'Image Upload';
+      lastInputSnippet = fileInput.files[0].name;
       const formData = new FormData();
       formData.append('file', fileInput.files[0]);
 
@@ -1577,6 +1714,93 @@ function showBusy(msg) {
   hideAll();
   if (msg) document.getElementById('busy-msg').textContent = msg;
   document.getElementById('busy-panel').style.display = 'block';
+}
+
+/* ─── COPY CERTIFIED REPORT ─── */
+function buildReportText() {
+  if (!lastResult) return '';
+  const d = lastResult;
+  const score      = d.score ?? '—';
+  const label      = (d.label || 'UNKNOWN').toUpperCase();
+  const confidence = d.confidence || '—';
+  const now        = new Date();
+  const datestamp  = now.toISOString().replace('T', ' ').slice(0, 10);
+  const timestamp  = now.toTimeString().slice(0, 8) + ' UTC';
+
+  // Report ID must come from the backend record — never generate client-side,
+  // or it won't match anything when someone pastes it back in for lookup.
+  const reportId = d.report_id || d._report_id || 'UNAVAILABLE';
+
+  // Trim summary to first sentence only (ends at first period/!/?)
+  const fullSummary = d.summary || '—';
+  const shortSummary = fullSummary.split(/(?<=[.!?])\s/)[0] || fullSummary.slice(0, 160);
+
+  // Top 2 sources only
+  const sources = (d.sources && d.sources.length > 0)
+    ? d.sources.slice(0, 2).map((s, i) => `  [${i + 1}] ${s}`).join('\n')
+    : '  No external sources identified.';
+
+  // Verdict emoji for instant readability when shared
+  const icons = { FACT: '✅', MISINFORMATION: '❌', SCAM: '🚨', PHISHING: '⚠️', UNKNOWN: '❓' };
+  const icon = icons[label] || '🔍';
+
+  return `🛡️ IRON DOME AI — VERIFIED REPORT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${icon} VERDICT: ${label}
+📊 RISK SCORE: ${score}/100  |  CONFIDENCE: ${confidence}
+📅 ${datestamp}  ${timestamp}  |  REF: ${reportId}
+
+📋 SUMMARY:
+${shortSummary}
+
+🔗 SOURCES:
+${sources}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 iron-dome-v3.onrender.com/verify/${reportId}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+function copyReport() {
+  const text = buildReportText();
+  if (!text) return;
+
+  const btn = document.getElementById('copy-report-btn');
+  const icon = document.getElementById('copy-icon');
+  const label = document.getElementById('copy-label');
+
+  const markCopied = () => {
+    btn.classList.add('copied');
+    icon.textContent = '✓';
+    label.textContent = 'REPORT COPIED';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      icon.textContent = '⧉';
+      label.textContent = 'COPY CERTIFIED REPORT';
+    }, 2200);
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(markCopied).catch(() => fallbackCopy(text, markCopied));
+  } else {
+    fallbackCopy(text, markCopied);
+  }
+}
+
+function fallbackCopy(text, onSuccess) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    onSuccess();
+  } catch (e) {
+    showError('Could not copy report. Please copy manually.');
+  }
+  document.body.removeChild(ta);
 }
 </script>
 </body>

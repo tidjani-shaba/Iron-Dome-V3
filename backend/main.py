@@ -5,6 +5,8 @@ import logging
 import time
 import hashlib
 import asyncio
+import sqlite3
+import threading
 import concurrent.futures
 from datetime import datetime
 from typing import Optional
@@ -153,25 +155,91 @@ GEMINI_RETRY_BACKOFF = 2
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=16)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LIGHTWEIGHT IN-MEMORY TTL CACHE
+# PERSISTENT SQLITE CACHE (survives restarts/redeploys, never expires)
+# Stores: cache_key -> (input_type, original_input, response_json, created_at)
+# This is what powers instant repeat-lookups for identical text/URL/image
+# submissions, so we don't re-hit Gemini for content we've already verified.
 # ─────────────────────────────────────────────────────────────────────────────
-CACHE_TTL_SECONDS = 60 * 30  # 30 minutes
-_cache: dict[str, tuple[float, dict]] = {}
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "iron_dome_cache.db")
+_db_lock = threading.Lock()
+
+
+def _get_db_conn():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS analysis_cache (
+            cache_key TEXT PRIMARY KEY,
+            report_id TEXT UNIQUE,
+            input_type TEXT NOT NULL,
+            original_input TEXT,
+            response_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            hit_count INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    # Migration: add report_id column if upgrading from older schema
+    try:
+        conn.execute("ALTER TABLE analysis_cache ADD COLUMN report_id TEXT UNIQUE")
+    except Exception:
+        pass  # column already exists
+    conn.commit()
+    return conn
+
+
+_db_conn = _get_db_conn()
+
+
+def _generate_report_id() -> str:
+    """Generate a short unique IDA-XXXXXX report ID based on current timestamp."""
+    import time as _time
+    return "IDA-" + hex(int(_time.time() * 1000))[2:].upper()
 
 
 def cache_get(key: str) -> Optional[dict]:
-    entry = _cache.get(key)
-    if not entry:
-        return None
-    expires_at, value = entry
-    if time.time() > expires_at:
-        _cache.pop(key, None)
-        return None
-    return value
+    with _db_lock:
+        cur = _db_conn.execute(
+            "SELECT response_json, report_id FROM analysis_cache WHERE cache_key = ?", (key,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        try:
+            _db_conn.execute(
+                "UPDATE analysis_cache SET hit_count = hit_count + 1 WHERE cache_key = ?",
+                (key,),
+            )
+            _db_conn.commit()
+        except Exception:
+            pass
+        try:
+            result = json.loads(row[0])
+            result["report_id"] = row[1]
+            return result
+        except json.JSONDecodeError:
+            return None
+
+def cache_set(key: str, value: dict, input_type: str = "unknown", original_input: str = "") -> str:
+    """Save result to DB. Returns the report_id assigned to this entry."""
+    report_id = _generate_report_id()
+    with _db_lock:
+        truncated_input = (original_input or "")[:500]
+        _db_conn.execute(
+            """INSERT INTO analysis_cache
+               (cache_key, report_id, input_type, original_input, response_json, created_at, hit_count)
+               VALUES (?, ?, ?, ?, ?, ?, 0)
+               ON CONFLICT(cache_key) DO UPDATE SET
+                 response_json = excluded.response_json,
+                 created_at = excluded.created_at""",
+            (key, report_id, input_type, truncated_input, json.dumps(value), datetime.utcnow().isoformat()),
+        )
+        _db_conn.commit()
+    return report_id
 
 
-def cache_set(key: str, value: dict, ttl: int = CACHE_TTL_SECONDS):
-    _cache[key] = (time.time() + ttl, value)
+def cache_count() -> int:
+    with _db_lock:
+        cur = _db_conn.execute("SELECT COUNT(*) FROM analysis_cache")
+        return cur.fetchone()[0]
 
 
 def cache_key(*parts: str) -> str:
@@ -193,6 +261,22 @@ def extract_youtube_id(url: str) -> Optional[str]:
     return None
 
 
+def _looks_like_blocked_request(e: Exception) -> bool:
+    """
+    Heuristic, version-tolerant detection of YouTube blocking/throttling the
+    transcript request (very common on cloud/datacenter IPs), as opposed to
+    the video genuinely having no captions. We must not silently treat a
+    block as 'no transcript' — that's what was causing fallback prompts to
+    fire (and hallucinate) on videos that actually have perfectly good
+    captions.
+    """
+    name = type(e).__name__.lower()
+    msg = str(e).lower()
+    block_name_signals = ("blocked", "toomanyrequests", "requestblocked", "ipblocked")
+    block_msg_signals = ("blocked", "too many requests", "429", "rate limit", "cloud provider")
+    return any(s in name for s in block_name_signals) or any(s in msg for s in block_msg_signals)
+
+
 def fetch_youtube_transcript(video_url_or_id: str) -> str:
     """Blocking. Must always be called via the thread pool."""
     video_id = extract_youtube_id(video_url_or_id)
@@ -200,12 +284,15 @@ def fetch_youtube_transcript(video_url_or_id: str) -> str:
         video_id = video_url_or_id
 
     yt_api = YouTubeTranscriptApi()
+    was_blocked = False
 
     for lang in ["fr", "en"]:
         try:
             fetched = yt_api.fetch(video_id, languages=[lang])
             return " ".join([item.text for item in fetched])
-        except Exception:
+        except Exception as e:
+            if _looks_like_blocked_request(e):
+                was_blocked = True
             continue
 
     try:
@@ -214,15 +301,55 @@ def fetch_youtube_transcript(video_url_or_id: str) -> str:
             try:
                 fetched = transcript.fetch()
                 return " ".join([item.text for item in fetched])
-            except Exception:
+            except Exception as e:
+                if _looks_like_blocked_request(e):
+                    was_blocked = True
                 continue
-    except Exception:
-        pass
+    except Exception as e:
+        if _looks_like_blocked_request(e):
+            was_blocked = True
+
+    if was_blocked:
+        # IMPORTANT: this is YouTube throttling/blocking the server's IP,
+        # NOT the video lacking captions. Surface it distinctly so the
+        # caller can log it loudly instead of quietly treating it the same
+        # as "no captions exist" (see analyze_url).
+        logger.error(
+            f"YouTube transcript request appears BLOCKED/THROTTLED for {video_id}. "
+            f"This usually means the server's IP is being rate-limited by YouTube "
+            f"(common on cloud hosting) — consider routing transcript requests "
+            f"through a proxy."
+        )
+        raise HTTPException(status_code=503, detail="TRANSCRIPT_FETCH_BLOCKED")
 
     raise HTTPException(
         status_code=422,
         detail="This YouTube video has no available transcript/subtitles. Iron Dome AI cannot analyze video audio without a transcript.",
     )
+
+
+def fetch_youtube_metadata(url: str) -> dict:
+    """
+    Blocking. Lightweight, no-API-key metadata fetch via YouTube's public
+    oEmbed endpoint. Used to anchor the fallback (no-transcript) search to
+    the ACTUAL video title/channel instead of a bare video ID, which is what
+    was causing the model to search blind and report on unrelated content.
+    """
+    try:
+        resp = requests.get(
+            "https://www.youtube.com/oembed",
+            params={"url": url, "format": "json"},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return {
+            "title": (data.get("title") or "").strip(),
+            "author": (data.get("author_name") or "").strip(),
+        }
+    except Exception as e:
+        logger.warning(f"oEmbed metadata fetch failed for {url}: {e}")
+        return {}
 
 
 def scrape_website(url: str) -> str:
@@ -424,7 +551,104 @@ class URLPayload(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
-    return {"status": "Iron Dome AI is operational", "model": "gemini-2.5-flash", "cache_entries": len(_cache)}
+    return {"status": "Iron Dome AI is operational", "model": "gemini-2.5-flash", "cache_entries": cache_count()}
+
+
+@app.get("/cache/stats")
+def cache_stats():
+    """Lightweight visibility into the persistent verification cache."""
+    with _db_lock:
+        cur = _db_conn.execute(
+            "SELECT input_type, COUNT(*), SUM(hit_count) FROM analysis_cache GROUP BY input_type"
+        )
+        breakdown = [
+            {"input_type": r[0], "entries": r[1], "total_hits": r[2] or 0}
+            for r in cur.fetchall()
+        ]
+    return {
+        "total_entries": cache_count(),
+        "breakdown": breakdown,
+    }
+
+
+@app.get("/verify/{report_id}")
+def verify_report(report_id: str):
+    """
+    Public verification endpoint.
+    When someone receives a shared Iron Dome report with REF: IDA-XXXXXX,
+    they can visit /verify/IDA-XXXXXX to confirm the result is genuine
+    and was issued by Iron Dome AI — not fabricated by the sender.
+    """
+    report_id = report_id.strip().upper()
+    if not report_id.startswith("IDA-"):
+        raise HTTPException(status_code=400, detail="Invalid report ID format. Expected IDA-XXXXXX.")
+
+    with _db_lock:
+        cur = _db_conn.execute(
+            """SELECT report_id, input_type, original_input, response_json, created_at, hit_count
+               FROM analysis_cache WHERE report_id = ?""",
+            (report_id,),
+        )
+        row = cur.fetchone()
+
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Report {report_id} not found. It may have been generated on a different server instance or does not exist."
+        )
+
+    try:
+        result = json.loads(row[3])
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Report data is corrupted.")
+
+    return {
+        "verified": True,
+        "report_id": row[0],
+        "input_type": row[1],
+        "original_input": row[2],
+        "created_at": row[4],
+        "times_verified": row[5],
+        "result": result,
+        "certified_by": "Iron Dome AI — Cameroon Digital Intelligence Network",
+    }
+
+
+
+def lookup_by_report_id(report_id: str) -> Optional[dict]:
+    """Look up a saved result by IDA- report ID. Returns result dict or None."""
+    rid = report_id.strip().upper()
+    with _db_lock:
+        cur = _db_conn.execute(
+            "SELECT response_json FROM analysis_cache WHERE report_id = ?", (rid,)
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        try:
+            _db_conn.execute(
+                "UPDATE analysis_cache SET hit_count = hit_count + 1 WHERE report_id = ?",
+                (rid,),
+            )
+            _db_conn.commit()
+        except Exception:
+            pass
+        try:
+            result = json.loads(row[0])
+            result["_retrieved_from_cache"] = True
+            result["_report_id"] = rid
+            return result
+        except json.JSONDecodeError:
+            return None
+
+
+def extract_report_id(text: str) -> Optional[str]:
+    """
+    Find an IDA-XXXXXX report ID anywhere inside a block of text.
+    Works for bare IDs and full copied reports containing the ID in the REF: line.
+    """
+    match = re.search(r"\bIDA-([A-Z0-9]{4,16})\b", text.upper())
+    return match.group(0) if match else None
 
 
 @app.post("/analyze/text")
@@ -439,6 +663,20 @@ async def analyze_text(req: TextRequest):
             "sources": [], "content_type_analyzed": "text", "language_detected": None,
         }
 
+    # ── IDA Report ID detection ──────────────────────────────────────────
+    # If user pastes a bare IDA-XXXXXX or a full copied report containing
+    # one, return the saved result instantly — zero Gemini call needed.
+    report_id_found = extract_report_id(content)
+    if report_id_found:
+        logger.info(f"Report ID detected: {report_id_found} — looking up in database")
+        saved = lookup_by_report_id(report_id_found)
+        if saved:
+            logger.info(f"Report {report_id_found} found — returning instantly from DB")
+            return saved
+        else:
+            logger.info(f"Report ID {report_id_found} not in this DB — proceeding with normal analysis")
+
+    # ── Normal cache lookup by content hash ─────────────────────────────
     key = cache_key("text", content)
     cached = cache_get(key)
     if cached:
@@ -447,7 +685,7 @@ async def analyze_text(req: TextRequest):
 
     prompt = f"[INPUT TYPE: plain text message or claim]\n\n{content}"
     result = await call_gemini_text(prompt, "text")
-    cache_set(key, result)
+    result["report_id"] = cache_set(key, result, input_type="text", original_input=content)
     return result
 
 
@@ -471,32 +709,66 @@ async def analyze_url(payload: URLPayload):
 
         try:
             transcript = await run_blocking(fetch_youtube_transcript, url)
+            metadata = await run_blocking(fetch_youtube_metadata, url)
+            title = metadata.get("title", "")
+            author = metadata.get("author", "")
             prompt = (
-                f"[INPUT TYPE: YouTube Video Transcript] [Video ID: {yt_id}]\n\n"
+                f"[INPUT TYPE: YouTube Video Transcript] [Video ID: {yt_id}]\n"
+                f"Video Title: {title or 'unknown'}\n"
+                f"Channel/Author: {author or 'unknown'}\n\n"
+                "If Google Search is used to cross-reference this content, ONLY use results that clearly match "
+                "this exact title/channel above — never substitute facts from a different, merely similar video.\n\n"
                 f"FULL TRANSCRIPT:\n{transcript}"
             )
             result = await call_gemini_text(prompt, "youtube")
             result["content_type_analyzed"] = "youtube"
-            cache_set(key, result)
+            result["report_id"] = cache_set(key, result, input_type="youtube", original_input=url)
             return result
         except HTTPException as e:
-            if e.status_code != 422:
+            if e.status_code == 503:
+                logger.warning(f"Transcript fetch BLOCKED/THROTTLED for {url} (likely cloud IP), using metadata fallback.")
+            elif e.status_code == 422:
+                logger.warning(f"No transcript available for {url}, using metadata fallback.")
+            else:
                 raise
-            logger.warning(f"No transcript available for {url}, using web fallback.")
         except Exception as e:
-            logger.warning(f"YouTube transcript fetch failed: {str(e)}, using web fallback.")
+            logger.warning(f"YouTube transcript fetch failed: {str(e)}, using metadata fallback.")
 
         try:
+            # Fetch real video metadata so the fallback search is anchored to
+            # this SPECIFIC video, not a bare/meaningless video ID. This is
+            # the key fix: searching on an opaque ID was the main source of
+            # hallucinated, unrelated results.
+            metadata = await run_blocking(fetch_youtube_metadata, url)
+            title = metadata.get("title", "")
+            author = metadata.get("author", "")
+
             fallback_prompt = (
-                f"[INPUT TYPE: YouTube Video Link Analysis]\n"
-                f"The user submitted this YouTube link: {url} (Video ID: {yt_id}).\n"
-                f"No transcript is available (likely a live stream or disabled subtitles). "
-                f"Search the web to examine the channel, video title, topic, or any related content. "
-                f"If this content is not explicitly related to Cameroon, flag it as OUT OF SCOPE."
+                f"[INPUT TYPE: YouTube Video Link Analysis — NO TRANSCRIPT AVAILABLE]\n"
+                f"Video URL: {url}\n"
+                f"Video ID: {yt_id}\n"
+                f"Video Title (from YouTube metadata): {title or 'UNKNOWN — metadata fetch failed'}\n"
+                f"Channel/Author (from YouTube metadata): {author or 'UNKNOWN — metadata fetch failed'}\n\n"
+                "You have NOT seen this video's actual spoken/audio content — no transcript or captions were "
+                "available. STRICT RULES FOR THIS CASE:\n"
+                "1. If a title and author are given above, use Google Search ONLY to find information that "
+                "clearly matches THIS EXACT title and THIS EXACT channel. Do not reason about, summarize, or "
+                "draw conclusions from videos with merely similar topics, different titles, or different "
+                "channels — even if they seem related.\n"
+                "2. If the title/author above are UNKNOWN, or if your search does not return results that "
+                "clearly and specifically match this exact video, you MUST set label = 'UNKNOWN', "
+                "confidence = 'Low', sources = [], and explain in 'reasoning' that the video's content could "
+                "not be verified because no transcript and no matching public information were found. Do NOT "
+                "substitute information about a different video, the channel's other content, or the general "
+                "topic as if it were this video.\n"
+                "3. Only decide scope_check using the title/author above (and any confirmed search match) — if "
+                "they are clearly unrelated to Cameroon, return scope_check = 'OUT_OF_SCOPE'. If they are "
+                "UNKNOWN, do not guess scope either way; treat as inconclusive in 'reasoning' and still return "
+                "label = 'UNKNOWN'."
             )
             result = await call_gemini_text(fallback_prompt, "youtube_fallback")
             result["content_type_analyzed"] = "youtube"
-            cache_set(key, result)
+            result["report_id"] = cache_set(key, result, input_type="youtube_fallback", original_input=url)
             return result
         except HTTPException:
             raise
@@ -517,7 +789,7 @@ async def analyze_url(payload: URLPayload):
         prompt = f"[INPUT TYPE: website/article URL]\n\n{scraped}"
         result = await call_gemini_text(prompt, "url")
         result["content_type_analyzed"] = "url"
-        cache_set(key, result)
+        result["report_id"] = cache_set(key, result, input_type="url", original_input=url)
         return result
     except HTTPException as e:
         if e.status_code != 400:
@@ -533,7 +805,7 @@ async def analyze_url(payload: URLPayload):
         )
         result = await call_gemini_text(fallback_prompt, "url_fallback")
         result["content_type_analyzed"] = "url"
-        cache_set(key, result)
+        result["report_id"] = cache_set(key, result, input_type="url_fallback", original_input=url)
         return result
     except HTTPException:
         raise
@@ -565,7 +837,7 @@ async def analyze_image(file: UploadFile = File(...)):
     )
     result = await call_gemini_with_image(prompt, contents, mime)
     result["content_type_analyzed"] = "image"
-    cache_set(key, result)
+    result["report_id"] = cache_set(key, result, input_type="image", original_input=f"{file.filename} ({mime})")
     return result
 
 
