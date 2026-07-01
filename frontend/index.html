@@ -308,6 +308,10 @@
       background: rgba(75,83,32,0.15);
     }
 
+    /* Desktop: icon + label side by side */
+    .tab-icon { font-size: 1rem; flex-shrink: 0; }
+    .tab-label { font-size: 0.7rem; letter-spacing: 0.06em; }
+
     .tab-content { display: none; padding: 28px; }
     .tab-content.active { display: block; }
 
@@ -947,13 +951,38 @@
       .hero h2 { font-size: 1.5rem; }
       .hero p { font-size: 0.9rem; padding: 0 4px; }
 
-      .tabs { flex-wrap: wrap; }
-      .tabs { flex-wrap: nowrap; overflow-x: auto; }
-      .tab-btn { flex: 1 1 25%; font-size: 0.72rem; padding: 10px 4px; white-space: nowrap; }
-      .tab-content { padding: 18px 16px; }
-      textarea { min-height: 100px; font-size: 0.82rem; }
-      input[type="text"] { font-size: 0.82rem; padding: 12px 14px; }
-      .btn-analyze { font-size: 0.7rem; padding: 14px; }
+      /* ── Tabs: icon-only on mobile, large touch targets ── */
+      .tabs {
+        flex-wrap: nowrap;
+        border-bottom: 2px solid var(--border);
+      }
+      .tab-btn {
+        flex: 1;
+        flex-direction: column;
+        gap: 4px;
+        padding: 12px 4px;
+        min-height: 56px;
+      }
+      .tab-icon { font-size: 1.3rem; }
+      .tab-label { display: none; } /* hide text, show icon only */
+
+      .tab-content { padding: 18px 14px; }
+      textarea { min-height: 120px; font-size: 1rem; }
+      input[type="text"] { font-size: 1rem; padding: 14px; }
+
+      /* ── Analyze button: full width, large, always tappable ── */
+      .btn-analyze {
+        margin-top: 16px;
+        width: 100%;
+        padding: 18px;
+        font-size: 0.85rem;
+        min-height: 56px;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+        cursor: pointer;
+        position: relative;
+        z-index: 10;
+      }
 
       /* ── Scramble animation: smaller text + truly fixed box = zero layout shift ── */
       #loading-state { padding: 32px 16px; }
@@ -997,15 +1026,13 @@
     @media (max-width: 380px) {
       .logo-text p { display: none; }
       .hero h2 { font-size: 1.3rem; }
-      .tab-btn { font-size: 0.56rem; padding: 10px 4px; }
+      .tab-icon { font-size: 1.1rem; }
       .score-circle-wrap { width: 88px; height: 88px; }
       .score-num { font-size: 1.2rem; }
       .scramble-text { font-size: 0.65rem; letter-spacing: 0.05em; }
     }
 
     @media (hover: none) and (pointer: coarse) {
-      .btn-analyze { min-height: 48px; }
-      .tab-btn { min-height: 44px; }
       .upload-zone { min-height: 140px; }
     }
   </style>
@@ -1057,10 +1084,18 @@
   <!-- INPUT PANEL -->
   <div class="input-panel">
     <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('text', this)">✍ Text / Message</button>
-      <button class="tab-btn" onclick="switchTab('url', this)">⬡ Website URL</button>
-      <button class="tab-btn" onclick="switchTab('youtube', this)">▶ YouTube Link</button>
-      <button class="tab-btn" onclick="switchTab('image', this)">◉ Image</button>
+      <button class="tab-btn active" onclick="switchTab('text', this)">
+        <span class="tab-icon">✍</span><span class="tab-label">Text / Message</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('url', this)">
+        <span class="tab-icon">⬡</span><span class="tab-label">Website URL</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('youtube', this)">
+        <span class="tab-icon">▶</span><span class="tab-label">YouTube</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('image', this)">
+        <span class="tab-icon">◉</span><span class="tab-label">Image</span>
+      </button>
     </div>
 
     <!-- TEXT -->
