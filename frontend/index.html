@@ -948,7 +948,8 @@
       .hero p { font-size: 0.9rem; padding: 0 4px; }
 
       .tabs { flex-wrap: wrap; }
-      .tab-btn { flex: 1 1 50%; font-size: 0.62rem; padding: 12px 6px; }
+      .tabs { flex-wrap: nowrap; overflow-x: auto; }
+      .tab-btn { flex: 1 1 25%; font-size: 0.72rem; padding: 10px 4px; white-space: nowrap; }
       .tab-content { padding: 18px 16px; }
       textarea { min-height: 100px; font-size: 0.82rem; }
       input[type="text"] { font-size: 0.82rem; padding: 12px 14px; }
@@ -1735,11 +1736,6 @@ function buildReportText() {
   const fullSummary = d.summary || '—';
   const shortSummary = fullSummary.split(/(?<=[.!?])\s/)[0] || fullSummary.slice(0, 160);
 
-  // Top 2 sources only
-  const sources = (d.sources && d.sources.length > 0)
-    ? d.sources.slice(0, 2).map((s, i) => `  [${i + 1}] ${s}`).join('\n')
-    : '  No external sources identified.';
-
   // Verdict emoji for instant readability when shared
   const icons = { FACT: '✅', MISINFORMATION: '❌', SCAM: '🚨', PHISHING: '⚠️', UNKNOWN: '❓' };
   const icon = icons[label] || '🔍';
@@ -1752,10 +1748,6 @@ ${icon} VERDICT: ${label}
 
 📋 SUMMARY:
 ${shortSummary}
-
-🔗 SOURCES:
-${sources}
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🌐 iron-dome-v3.onrender.com/verify/${reportId}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
