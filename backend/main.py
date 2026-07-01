@@ -848,3 +848,206 @@ async def global_exception_handler(request, exc):
         status_code=500,
         content={"detail": str(exc)},
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WHATSAPP CHATBOT — Twilio webhook
+# Receives WhatsApp messages via Twilio, routes through Iron Dome analysis,
+# replies with a formatted result. Reuses ALL existing analysis functions.
+# ─────────────────────────────────────────────────────────────────────────────
+from fastapi import Request, Form as FastAPIForm
+from fastapi.responses import Response as FastAPIResponse
+
+# Credentials come ONLY from environment variables — never hardcoded
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN", "")
+
+
+def twiml_reply(message: str) -> FastAPIResponse:
+    """Wrap a plain-text message in TwiML XML so Twilio sends it to WhatsApp."""
+    safe = (message
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;"))
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Message>{safe}</Message>
+</Response>"""
+    return FastAPIResponse(content=xml, media_type="application/xml")
+
+
+def format_wa_result(result: dict, rid: str = "") -> str:
+    """Format an Iron Dome result into a short WhatsApp message."""
+    if result.get("scope_check") == "OUT_OF_SCOPE":
+        msg = result.get("out_of_scope_message", "Content is outside Iron Dome's Cameroon scope.")
+        return f"🌍 OUT OF SCOPE\n\n{msg}\n\n─────────────\n🛡️ Iron Dome AI"
+
+    label      = (result.get("label") or "UNKNOWN").upper()
+    score      = result.get("score", "—")
+    confidence = result.get("confidence", "—")
+    summary    = result.get("summary") or "—"
+
+    # First sentence only
+    short = summary.split(". ")[0] + ("." if "." in summary else "")
+    if len(short) > 200:
+        short = short[:197] + "..."
+
+    icons = {"FACT": "✅", "MISINFORMATION": "❌", "SCAM": "🚨",
+             "PHISHING": "⚠️", "UNKNOWN": "❓"}
+    icon = icons.get(label, "🔍")
+    verify = f"\n🔗 iron-dome-v3.onrender.com/verify/{rid}" if rid else ""
+
+    return (
+        f"🛡️ IRON DOME AI\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"{icon} VERDICT: {label}\n"
+        f"📊 RISK: {score}/100 | {confidence}\n\n"
+        f"📋 {short}"
+        f"{verify}\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"Send text, URL, YouTube, or image to verify."
+    )
+
+
+HELP_MSG = """🛡️ IRON DOME AI — WhatsApp Bot
+━━━━━━━━━━━━━━━
+Cameroon Digital Trust Platform
+
+Send me any of:
+✍ Text or news claim to verify
+🌐 Website URL
+▶ YouTube video link
+📸 An image or screenshot
+🔑 Report ID (IDA-XXXXXX) for saved result
+
+Scope: Cameroonian digital space only.
+━━━━━━━━━━━━━━━
+🌐 iron-dome-v3.onrender.com"""
+
+
+def _is_url(text: str) -> bool:
+    return bool(re.match(r"https?://", text.strip(), re.IGNORECASE))
+
+
+@app.post("/whatsapp/webhook")
+async def whatsapp_webhook(
+    request: Request,
+    Body: str = FastAPIForm(default=""),
+    NumMedia: str = FastAPIForm(default="0"),
+    MediaUrl0: str = FastAPIForm(default=""),
+    MediaContentType0: str = FastAPIForm(default=""),
+    From: str = FastAPIForm(default=""),
+):
+    user_msg  = (Body or "").strip()
+    num_media = int(NumMedia or 0)
+    sender    = From or "unknown"
+    logger.info(f"WhatsApp from {sender}: '{user_msg[:80]}' media={num_media}")
+
+    # ── Help ──────────────────────────────────────────────────────────────
+    if user_msg.lower() in ("", "help", "aide", "start", "/help", "/start"):
+        return twiml_reply(HELP_MSG)
+
+    # ── Image ─────────────────────────────────────────────────────────────
+    if num_media > 0 and MediaUrl0:
+        try:
+            auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) if TWILIO_ACCOUNT_SID else None
+            img_resp = requests.get(MediaUrl0, auth=auth, timeout=15)
+            img_resp.raise_for_status()
+            image_bytes = img_resp.content
+            mime_type   = MediaContentType0 or "image/jpeg"
+
+            key    = cache_key("image", hashlib.sha256(image_bytes).hexdigest())
+            cached = cache_get(key)
+            if cached:
+                return twiml_reply(format_wa_result(cached, cached.get("report_id", "")))
+
+            prompt = (
+                "[INPUT TYPE: image via WhatsApp]\n"
+                "Examine text, logos, claims, and visual indicators of authenticity or manipulation. "
+                "Search the web for Cameroonian scam exposures or misinformation if relevant."
+            )
+            result = await call_gemini_with_image(prompt, image_bytes, mime_type)
+            result["content_type_analyzed"] = "image"
+            rid = cache_set(key, result, input_type="image_whatsapp",
+                            original_input=f"WhatsApp image from {sender}")
+            result["report_id"] = rid
+            return twiml_reply(format_wa_result(result, rid))
+        except Exception as e:
+            logger.error(f"WhatsApp image failed: {e}")
+            return twiml_reply("⚠️ Could not process that image. Try again or send a text/URL.\n\n🛡️ Iron Dome AI")
+
+    # ── Report ID ─────────────────────────────────────────────────────────
+    rid_found = extract_report_id(user_msg)
+    if rid_found:
+        saved = lookup_by_report_id(rid_found)
+        if saved:
+            return twiml_reply(format_wa_result(saved, rid_found))
+        return twiml_reply(
+            f"❓ Report {rid_found} not found.\n"
+            f"It may have been generated on a different server.\n\n🛡️ Iron Dome AI"
+        )
+
+    # ── URL / YouTube ─────────────────────────────────────────────────────
+    if _is_url(user_msg):
+        url = user_msg
+        is_yt = "youtube.com" in url.lower() or "youtu.be" in url.lower()
+        if is_yt:
+            yt_id = extract_youtube_id(url)
+            key   = cache_key("youtube", yt_id or url)
+        else:
+            key = cache_key("url", url)
+
+        cached = cache_get(key)
+        if cached:
+            return twiml_reply(format_wa_result(cached, cached.get("report_id", "")))
+
+        try:
+            if is_yt:
+                transcript = await run_blocking(fetch_youtube_transcript, url)
+                metadata   = await run_blocking(fetch_youtube_metadata, url)
+                prompt = (
+                    f"[INPUT TYPE: YouTube Video Transcript via WhatsApp]\n"
+                    f"Title: {metadata.get('title','unknown')}\n"
+                    f"Channel: {metadata.get('author','unknown')}\n\n"
+                    f"TRANSCRIPT:\n{transcript}"
+                )
+                result = await call_gemini_text(prompt, "youtube")
+                result["content_type_analyzed"] = "youtube"
+            else:
+                scraped = await run_blocking(scrape_website, url)
+                prompt  = f"[INPUT TYPE: website URL via WhatsApp]\n\n{scraped}"
+                result  = await call_gemini_text(prompt, "url")
+                result["content_type_analyzed"] = "url"
+
+            rid = cache_set(key, result,
+                            input_type=("youtube_whatsapp" if is_yt else "url_whatsapp"),
+                            original_input=url)
+            result["report_id"] = rid
+            return twiml_reply(format_wa_result(result, rid))
+        except Exception as e:
+            logger.error(f"WhatsApp URL/YouTube failed: {e}")
+            return twiml_reply(
+                "⚠️ Could not analyze that link. It may be unavailable or have no captions (YouTube).\n\n🛡️ Iron Dome AI"
+            )
+
+    # ── Plain text ────────────────────────────────────────────────────────
+    key    = cache_key("text", user_msg)
+    cached = cache_get(key)
+    if cached:
+        return twiml_reply(format_wa_result(cached, cached.get("report_id", "")))
+
+    try:
+        prompt = f"[INPUT TYPE: plain text via WhatsApp]\n\n{user_msg}"
+        result = await call_gemini_text(prompt, "text")
+        rid    = cache_set(key, result, input_type="text_whatsapp", original_input=user_msg)
+        result["report_id"] = rid
+        return twiml_reply(format_wa_result(result, rid))
+    except HTTPException as e:
+        if e.status_code == 429:
+            return twiml_reply("🕐 Iron Dome is very busy. Wait a moment and try again.\n\n🛡️ Iron Dome AI")
+        if e.status_code == 503:
+            return twiml_reply("⚠️ Network temporarily overloaded. Retry in a few seconds.\n\n🛡️ Iron Dome AI")
+        return twiml_reply("⚠️ Analysis failed. Please try again.\n\n🛡️ Iron Dome AI")
+    except Exception as e:
+        logger.error(f"WhatsApp text failed: {e}")
+        return twiml_reply("⚠️ Something went wrong. Please try again.\n\n🛡️ Iron Dome AI")
